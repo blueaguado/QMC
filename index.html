@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <title>QMC Dashboard</title>
+  <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    /* [Your existing CSS styles preserved exactly as before] */
+    :root { --primary: #1e88e5; --accent: #2ecc71; /* ... */ }
+    /* ... rest of your styles ... */
+  </style>
+</head>
+<body>
+  <!-- Loader -->
+  <div id="custom-loader">
+    <div class="wrapper"><div class="circle"></div><div class="circle"></div><div class="circle"></div></div>
+  </div>
+
+  <!-- Top Nav -->
+  <div class="top-nav">
+    <div class="left">
+      <img src="https://kalibrrph.roketdigital.com/wp-content/uploads/2022/05/quezon_city.svg-768x576.png" alt="Logo">
+      <h1>QCMC Dashboard</h1>
+    </div>
+    <div class="right">
+      <span id="currentDateTime"></span>
+      <button onclick="window.open('https://docs.google.com/spreadsheets/d/1-iq85BQvy8hVgZcjv6qKFCAIl-dfaK0t_eurM-fY3P8/edit?gid=952374371','_blank')">View Data</button>
+    </div>
+  </div>
+
+  <header class="page-title">Quezon Memorial Circle - Water Usage Dashboard</header>
+
+  <main>
+    <div class="kpi-container">
+      <div class="kpi-card"><div class="kpi-icon">💧</div><div class="kpi-info"><h3>Total Consumption</h3><p id="kpiTotalConsumption">0.00 m³</p></div></div>
+      <div class="kpi-card"><div class="kpi-icon">💲</div><div class="kpi-info"><h3>Total Charges</h3><p id="kpiTotalCharges">₱0.00</p></div></div>
+      <div class="kpi-card"><div class="kpi-icon">📈</div><div class="kpi-info"><h3>Avg. Rate</h3><p id="kpiAvgRate">₱0.00/m³</p></div></div>
+    </div>
+
+    <div class="chart-container">
+      <select id="nameSelect" onchange="onNameChange()">
+        <option disabled selected>Select End User</option>
+      </select>
+      <div id="googleChartDiv"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Date</th><th>Consumption (m³)</th><th>Rate (₱/m³)</th><th>Charges (₱)</th></tr></thead>
+        <tbody id="dataTbody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script>
+    /* ---- App Script Web App URL ---- */
+    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby__f8dt01pWQMEogEIJPUX_JptvNd8MqOeTPqAqGwW088COyVhAmu20Xzhk23s4n3qnA/exec";
+
+    const peso = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 });
+    const num2 = (n) => Number(n || 0).toFixed(2);
+
+    function updateDateTime() {
+      const now = new Date();
+      const options = { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
+      document.getElementById('currentDateTime').innerText = now.toLocaleString('en-US', options);
+    }
+
+    function drawChart(data) {
+      const chartData = new google.visualization.DataTable();
+      chartData.addColumn('string', 'Month');
+      chartData.addColumn('number', 'Consumption');
+      chartData.addColumn({ type: 'string', role: 'annotation' });
+      chartData.addColumn('number', 'Rate');
+      chartData.addColumn({ type: 'string', role: 'annotation' });
+      chartData.addColumn('number', 'Total Charges');
+      chartData.addColumn({ type: 'string', role: 'annotation' });
+
+      let totalConsumption = 0, totalRate = 0, totalCharges = 0;
+      data.forEach(row => {
+        const m = row.month ?? row.date ?? '';
+        const c = Number(row.consumption) || 0;
+        const r = Number(row.rate) || 0;
+        const t = Number(row.total) || Number(row.charges) || 0;
+        chartData.addRow([m, c, c!==0?String(c):null, r, r!==0?String(r):null, t, t!==0?String(t):null]);
+        totalConsumption += c; totalRate += r; totalCharges += t;
+      });
+
+      const options = {
+        title: 'Monthly Water Usage',
+        colors: ['#3498db', '#e74c3c', '#2ecc71'],
+        bar: { groupWidth: '60%' },
+        hAxis: { title: 'Month' },
+        vAxis: { title: 'Value', minValue: 0 },
+        annotations: { alwaysOutside: true, textStyle: { fontSize: 12, color: '#000' } },
+        legend: { position: 'top', maxLines: 2 }
+      };
+
+      new google.visualization.ColumnChart(document.getElementById('googleChartDiv')).draw(chartData, options);
+
+      const avgRate = data.length ? (totalRate / data.length) : 0;
+      document.getElementById('kpiTotalConsumption').innerText = `${num2(totalConsumption)} m³`;
+      document.getElementById('kpiTotalCharges').innerText = peso.format(totalCharges);
+      document.getElementById('kpiAvgRate').innerText = `${peso.format(avgRate).replace('₱\u00A0','₱')}/m³`;
+
+      const tbody = document.getElementById('dataTbody');
+      tbody.innerHTML = '';
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        const month = row.month ?? row.date ?? '';
+        const consumption = Number(row.consumption) || 0;
+        const rate = Number(row.rate) || 0;
+        const total = Number(row.total) || Number(row.charges) || 0;
+        tr.innerHTML = `
+          <td>${month}</td>
+          <td>${num2(consumption)}</td>
+          <td>${num2(rate)}</td>
+          <td>${peso.format(total)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('custom-loader').style.display = 'none';
+    }
+
+    function loadNames() {
+      fetch(`${WEB_APP_URL}?action=getNames`)
+        .then(res => res.json())
+        .then(names => {
+          const select = document.getElementById('nameSelect');
+          select.innerHTML = '<option disabled selected>Select End User</option>';
+          (names || []).forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.text = name;
+            select.appendChild(opt);
+          });
+          document.getElementById('custom-loader').style.display = 'none';
+        }).catch(err => {
+          console.error("Error fetching names:", err);
+          document.getElementById('custom-loader').style.display = 'none';
+        });
+    }
+
+    function onNameChange() {
+      document.getElementById('custom-loader').style.display = 'flex';
+      const name = document.getElementById('nameSelect').value;
+      fetch(`${WEB_APP_URL}?action=getData&name=${encodeURIComponent(name)}`)
+        .then(res => res.json())
+        .then(data => drawChart(data))
+        .catch(err => {
+          console.error("Error fetching data:", err);
+          document.getElementById('custom-loader').style.display = 'none';
+        });
+    }
+
+    google.charts.load('current', { packages: ['corechart'] });
+    google.charts.setOnLoadCallback(() => {
+      document.getElementById('custom-loader').style.display = 'flex';
+      updateDateTime();
+      loadNames();
+    });
+    setInterval(updateDateTime, 1000);
+  </script>
+</body>
+</html>
